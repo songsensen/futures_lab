@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}历史案例库{% endblock %}
+{% block content %}
+<h4 class="mb-3">历史案例库</h4>
+
+<form class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="variety" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">全部品种</option>
+      {% for v in varieties %}
+      <option value="{{ v.code }}" {% if v.code == current_variety %}selected{% endif %}>{{ v.name }}（{{ v.code }}）</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="factor" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">全部驱动因素</option>
+      {% for f in factors %}
+      <option value="{{ f.id }}" {% if f.id == current_factor %}selected{% endif %}>[{{ f.category }}] {{ f.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="origin" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">全部类型（催生型/外生冲击型）</option>
+      <option value="催生型" {% if current_origin == '催生型' %}selected{% endif %}>催生型（事前有征兆可找）</option>
+      <option value="外生冲击型" {% if current_origin == '外生冲击型' %}selected{% endif %}>外生冲击型（本质不可预判）</option>
+    </select>
+  </div>
+</form>
+
+<div class="row">
+  {% for c in cases %}
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h6><a href="{{ url_for('case.case_detail', case_id=c.id) }}">{{ c.name }}</a>
+          {% if c.is_failure_case %}<span class="badge failure-case-tag">逻辑未兑现</span>{% endif %}
+        </h6>
+        <p class="small text-muted mb-1">{{ c.variety.name }} · {{ c.start_date }} ~ {{ c.end_date }}</p>
+        <p class="small mb-1">驱动因素：<span class="badge bg-info text-dark">{{ c.event_type.name if c.event_type else '-' }}</span>
+          {% if c.trigger_origin == '催生型' %}<span class="badge bg-warning text-dark">催生型 · {{ c.precipitating_mechanism }}</span>
+          {% elif c.trigger_origin %}<span class="badge bg-secondary">{{ c.trigger_origin }}</span>{% endif %}
+        </p>
+        <p class="small mb-0">价格：{{ c.price_start }} → {{ c.price_extreme }} → {{ c.price_end }}</p>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">没有符合条件的案例。</p>
+  {% endfor %}
+</div>
+{% endblock %}
