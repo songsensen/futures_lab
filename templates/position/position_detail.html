@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ variety.name }} 持仓/仓单分析{% endblock %}
+{% block content %}
+<script src="{{ url_for('static', filename='vendor/echarts/echarts.min.js') }}"></script>
+<h4>{{ variety.name }}（{{ variety.code }}） 持仓 / 仓单分析</h4>
+
+{% if position_snap %}
+<div class="row">
+  <div class="col-md-3"><div class="card"><div class="card-body">
+    <div class="small text-muted">总持仓量</div><div class="h5">{{ position_snap.total_open_interest }}</div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body">
+    <div class="small text-muted">持仓历史百分位</div><div class="h5">{{ position_snap.oi_percentile }}%</div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body">
+    <div class="small text-muted">虚实盘比</div>
+    <div class="h5">{{ position_snap.virtual_real_ratio }} : 1
+      {% if position_snap.virtual_real_alert %}<span class="badge bg-danger">警戒</span>{% endif %}
+    </div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body">
+    <div class="small text-muted">前5多/空集中度</div><div class="h5">{{ position_snap.top5_long_ratio }}% / {{ position_snap.top5_short_ratio }}%</div>
+  </div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-header">持仓量 / 仓单量 走势对比</div>
+  <div class="card-body"><div id="posChart" style="width:100%;height:380px;"></div></div>
+</div>
+
+<div class="card">
+  <div class="card-header">虚实盘比走势（超过100:1为讨论中提到的警戒阈值）</div>
+  <div class="card-body"><div id="ratioChart" style="width:100%;height:300px;"></div></div>
+</div>
+
+<script>
+const dates = {{ chart_dates | tojson }};
+const oi = {{ oi_series | tojson }};
+const wh = {{ wh_series | tojson }};
+const ratio = {{ ratio_series | tojson }};
+
+const posChart = echarts.init(document.getElementById('posChart'));
+posChart.setOption({
+  tooltip: { trigger: 'axis' },
+  legend: { data: ['持仓量', '仓单量'] },
+  xAxis: { type: 'category', data: dates },
+  yAxis: [{ type: 'value', name: '持仓量' }, { type: 'value', name: '仓单量' }],
+  dataZoom: [{ type: 'inside' }, { type: 'slider' }],
+  series: [
+    { name: '持仓量', type: 'line', data: oi, showSymbol: false },
+    { name: '仓单量', type: 'line', data: wh, yAxisIndex: 1, showSymbol: false },
+  ],
+});
+
+const ratioChart = echarts.init(document.getElementById('ratioChart'));
+ratioChart.setOption({
+  tooltip: { trigger: 'axis' },
+  xAxis: { type: 'category', data: dates },
+  yAxis: { type: 'value', name: '虚实盘比' },
+  dataZoom: [{ type: 'inside' }, { type: 'slider' }],
+  series: [{
+    name: '虚实盘比', type: 'line', data: ratio, showSymbol: false,
+    markLine: { data: [{ yAxis: 100, lineStyle: { color: '#dc3545' } }] },
+  }],
+});
+window.addEventListener('resize', () => { posChart.resize(); ratioChart.resize(); });
+</script>
+{% else %}
+<p class="text-muted">暂无数据。</p>
+{% endif %}
+
+<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.variety_detail', code=variety.code) }}">← 返回品种详情页</a>
+{% endblock %}
