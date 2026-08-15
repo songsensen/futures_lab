@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ case.name }}{% endblock %}
+{% block content %}
+<h4>{{ case.name }}
+  {% if case.is_failure_case %}<span class="badge failure-case-tag">逻辑未兑现案例</span>{% endif %}
+</h4>
+<p class="text-muted">{{ case.variety.name }}（{{ case.variety.code }}） · {{ case.start_date }} ~ {{ case.end_date }} ·
+  当时定价权归属：{{ case.pricing_regime_then }}</p>
+
+<div class="card">
+  <div class="card-header">
+    事前状态（这个事件是"催生"出来的，还是纯粹的外生冲击？）
+    {% if case.trigger_origin == '催生型' %}
+    <span class="badge bg-warning text-dark">催生型 · {{ case.precipitating_mechanism }}</span>
+    {% elif case.trigger_origin %}
+    <span class="badge bg-secondary">{{ case.trigger_origin }} · 本质不可预判，事前找不到有效征兆</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if case.trigger_origin == '催生型' %}
+    <p class="small text-muted mb-1">事前极端状态从 <strong>{{ case.setup_start_date }}</strong> 就已经开始
+      （比事件被市场广泛注意到的 {{ case.start_date }} 早了 {{ (case.start_date - case.setup_start_date).days }} 天）：</p>
+    <p>{{ case.setup_description }}</p>
+    {% if case.pre_event_chip_anomaly %}
+    <p class="small text-muted mb-1">事前筹码异常信号：</p>
+    <p class="case-diverge mb-0">{{ case.pre_event_chip_anomaly }}</p>
+    {% endif %}
+    {% else %}
+    <p class="text-muted mb-0">这属于外生冲击型事件（天气、地缘等真正的外部随机冲击），事前不存在可靠的价格/筹码征兆，
+      不必在这类案例上找"事前状态"规律，重点还是事件发生后的验证节点。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">触发事件</div>
+      <div class="card-body">
+        <p class="small mb-1"><span class="badge bg-info text-dark">{{ case.event_type.name if case.event_type else '-' }}</span></p>
+        <p>{{ case.event_description }}</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">当时基本面状态</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><td class="text-muted">库存水平</td><td>{{ case.inventory_level_then }}</td></tr>
+          <tr><td class="text-muted">需求状态</td><td>{{ case.demand_status_then }}</td></tr>
+          <tr><td class="text-muted">利润状态</td><td>{{ case.profit_status_then }}</td></tr>
+          <tr><td class="text-muted">政策/事件是否落地</td><td>{{ case.policy_materialized }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">市场当时的解读 vs 复盘后的真实驱动
+        {% if diverges %}<span class="badge bg-warning text-dark">两者不一致</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-1">市场当时主流解读：</p>
+        <p>{{ case.market_interpretation_then }}</p>
+        <p class="small text-muted mb-1">复盘后判断的真实驱动：</p>
+        <p class="{% if diverges %}case-diverge{% endif %}">{{ case.real_driver_after_review }}</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">最终结果与规律提炼</div>
+      <div class="card-body">
+        <p><strong>价格路径：</strong>{{ case.price_start }} → {{ case.price_extreme }}（极值） → {{ case.price_end }}</p>
+        <p>{{ case.final_price_landing }}</p>
+        <ul class="mb-0">
+          {% for l in lessons %}<li>{{ l }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">关键节点时间线</div>
+  <div class="card-body">
+    {% for t in case.timeline %}
+    <div class="timeline-item">
+      <strong>{{ t.event_date }}</strong> · 价格 {{ t.price }} · <span class="badge bg-secondary">{{ t.stage }}</span>
+      <div class="small">{{ t.description }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.variety_detail', code=case.variety.code) }}">← 返回该品种详情页</a>
+{% endblock %}
