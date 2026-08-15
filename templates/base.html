@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{% block title %}大宗商品期货分析系统（骨架版）{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('main.variety_list') }}">大宗商品期货分析系统 <span class="badge bg-secondary">骨架版 / 测试数据</span></a>
+    <div class="navbar-nav">
+      <a class="nav-link" href="{{ url_for('main.variety_list') }}">品种</a>
+      <a class="nav-link" href="{{ url_for('case.case_list') }}">历史案例库</a>
+      <a class="nav-link" href="{{ url_for('calendar.calendar_view') }}">日历 / 时间线</a>
+      <a class="nav-link" href="{{ url_for('principles.principles') }}">系统原则</a>
+    </div>
+  </div>
+</nav>
+<div class="container-fluid px-4">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      {% for m in messages %}<div class="alert alert-info">{{ m }}</div>{% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
