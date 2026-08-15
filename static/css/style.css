@@ -1,0 +1,13 @@
+body { background: #f5f6f8; }
+.card { margin-bottom: 1rem; }
+.status-badge-平静 { background: #6c757d; }
+.status-badge-偏热 { background: #fd7e14; }
+.status-badge-异常 { background: #dc3545; }
+.factor-row { border-left: 4px solid #dee2e6; padding-left: .75rem; margin-bottom: .6rem; }
+.factor-row.hot { border-left-color: #fd7e14; }
+.factor-row.alert { border-left-color: #dc3545; }
+.timeline-item { border-left: 2px solid #adb5bd; padding-left: 1rem; margin-bottom: 1rem; position: relative; }
+.timeline-item::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #0d6efd; position: absolute; left: -5px; top: 4px; }
+.case-diverge { background: #fff3cd; border: 1px solid #ffe69c; padding: .5rem .75rem; border-radius: .375rem; }
+.failure-case-tag { background: #dc3545; }
+.match-score { font-weight: 600; }
