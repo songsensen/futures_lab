@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}日历 / 时间线{% endblock %}
+{% block content %}
+<h4 class="mb-3">日历 / 时间线 <small class="text-muted">（品种事件 + 政策监控，按时间倒序，粗略骨架先用列表形式呈现）</small></h4>
+<table class="table table-sm table-hover bg-white">
+  <thead><tr><th>日期</th><th>类型</th><th>标题</th><th>品种/分类</th><th>因素标签</th><th>等级</th><th>说明</th></tr></thead>
+  <tbody>
+    {% for it in items %}
+    <tr>
+      <td>{{ it.date }}</td>
+      <td><span class="badge {% if it.type == '政策监控' %}bg-primary{% else %}bg-secondary{% endif %}">{{ it.type }}</span></td>
+      <td>{{ it.title }}</td>
+      <td>{{ it.variety }}</td>
+      <td>{{ it.factor }}</td>
+      <td>
+        {% if it.level == 3 %}<span class="badge bg-danger">等级3-确认</span>
+        {% elif it.level == 2 %}<span class="badge bg-warning text-dark">等级2-落地</span>
+        {% else %}<span class="badge bg-secondary">等级1-喊话</span>{% endif %}
+      </td>
+      <td class="small text-muted">{{ it.description }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
