@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}系统原则{% endblock %}
+{% block content %}
+<h4 class="mb-3">系统原则</h4>
+<div class="card">
+  <div class="card-body">
+    <ol class="fs-5">
+      {% for p in principles %}
+      <li class="mb-3">{{ p }}</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+{% endblock %}
