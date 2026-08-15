@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}品种列表{% endblock %}
+{% block content %}
+<h4 class="mb-3">品种列表 <small class="text-muted">（测试数据，用于验证整体流程）</small></h4>
+<div class="row">
+  {% for c in cards %}
+  <div class="col-md-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">
+          <a href="{{ url_for('main.variety_detail', code=c.variety.code) }}">{{ c.variety.name }} ({{ c.variety.code }})</a>
+        </h5>
+        <p class="text-muted mb-1">{{ c.variety.exchange }} · {{ c.variety.sector }}</p>
+        <p class="mb-1"><span class="badge bg-info text-dark">{{ c.variety.pricing_type }}</span>
+           <span class="badge bg-secondary">当前{{ c.variety.profit_status }}</span></p>
+        {% if c.price_snap %}
+        <p class="mb-1">最新收盘：<strong>{{ c.price_snap.latest_close }}</strong>
+          （{{ c.price_snap.latest_date }}，历史{{ c.price_snap.percentile }}%分位）</p>
+        {% endif %}
+        <p class="small text-muted mb-0">核心锚定：{{ c.variety.anchor_benchmark }}</p>
+        <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('main.variety_detail', code=c.variety.code) }}">查看详情 →</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
