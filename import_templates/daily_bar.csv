@@ -1,0 +1,4 @@
+variety_code,contract_code,trade_date,open,high,low,close,settle,volume,open_interest
+SA,SA.main,2026-08-10,1450,1465,1442,1458,1456,320000,1850000
+SA,SA.main,2026-08-11,1458,1470,1451,1463,1462,298000,1862000
+FG,FG.main,2026-08-10,1180,1195,1175,1188,1186,210000,1120000
