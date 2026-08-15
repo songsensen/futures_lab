@@ -1,0 +1,762 @@
+{% extends "base.html" %}
+{% block title %}{{ variety.name }} 品种详情{% endblock %}
+{% block content %}
+<script src="{{ url_for('static', filename='vendor/echarts/echarts.min.js') }}"></script>
+
+<div class="d-flex justify-content-between align-items-start">
+  <h4>{{ variety.name }}（{{ variety.code }}） <small class="text-muted">{{ variety.exchange }} · {{ variety.sector }}</small></h4>
+</div>
+
+{% if composite_signal %}
+<div class="card mb-3" style="border-left:4px solid
+  {% if composite_signal.verdict == '多头因素占优' %}#198754
+  {% elif composite_signal.verdict == '空头因素占优' %}#dc3545
+  {% elif composite_signal.verdict == '多空信号不一致' %}#fd7e14
+  {% else %}#6c757d{% endif %};">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
+    <span>决策参考 · 信号对齐（不是预测，是把下面几路已经算出来的独立信号摆在一起看有没有形成合力）</span>
+    <span>
+      <span class="badge
+        {% if composite_signal.verdict == '多头因素占优' %}bg-success
+        {% elif composite_signal.verdict == '空头因素占优' %}bg-danger
+        {% elif composite_signal.verdict == '多空信号不一致' %}bg-warning text-dark
+        {% else %}bg-secondary{% endif %}" style="font-size:0.9rem;">{{ composite_signal.verdict }}</span>
+      <span class="badge bg-light text-dark border">置信度：{{ composite_signal.confidence }}</span>
+    </span>
+  </div>
+  <div class="card-body">
+    <p class="mb-2">{{ composite_signal.summary }}</p>
+    <div class="row g-2 mb-2">
+      {% for c in composite_signal.components %}
+      <div class="col-md-6 col-lg-3">
+        <div class="small border rounded p-2 h-100">
+          <strong>{{ c.channel }}</strong>
+          <div class="text-muted">{{ c.read }}</div>
+          <div class="mt-1">{{ c.lean }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if risk_reward_summary %}
+    <div class="small mt-2" style="background:#eef6ff;border:1px solid #bcdcff;border-radius:4px;padding:6px 10px;">
+      参照 {{ risk_reward_summary.sample_count }} 个匹配的历史相似案例，从和"现在"对应的起点往后看，
+      历史上价格路径的最大涨幅区间约 <strong>{{ risk_reward_summary.gain_range[0] }}% ~ {{ risk_reward_summary.gain_range[1] }}%</strong>，
+      最大回撤区间约 <strong>{{ risk_reward_summary.drawdown_range[0] }}% ~ {{ risk_reward_summary.drawdown_range[1] }}%</strong>，
+      走完这段大约用了 <strong>{{ risk_reward_summary.duration_range[0] }} ~ {{ risk_reward_summary.duration_range[1] }}</strong> 个交易日
+      （逐案例明细见下方"历史相似案例参照"）。样本量小，区间仅供参考，不是精确的止损/止盈点位。
+    </div>
+    {% endif %}
+    <p class="small text-muted mt-2 mb-0 fst-italic">{{ composite_signal.caveat }}</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="row">
+  <!-- 第一层：静态认知框架 -->
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">品种基本信息 / 定价权归属 / 成本参考</div>
+      <div class="card-body">
+        <p>{{ variety.intro }}</p>
+        <table class="table table-sm">
+          <tr><td class="text-muted">交易单位</td><td>{{ variety.unit }}</td></tr>
+          <tr><td class="text-muted">合约月份</td><td>{{ variety.contract_months }}</td></tr>
+          <tr><td class="text-muted">定价权归属</td><td><span class="badge bg-info text-dark">{{ variety.pricing_type }}</span></td></tr>
+          <tr><td class="text-muted">核心锚定标的</td><td>{{ variety.anchor_benchmark }}</td></tr>
+          <tr><td class="text-muted">内外盘联动系数</td><td>{{ variety.linkage_coefficient }}</td></tr>
+          <tr><td class="text-muted">当前行业状态</td><td>{{ variety.profit_status }}</td></tr>
+          <tr><td class="text-muted">历史区间</td><td>{{ variety.historical_low }} ~ {{ variety.historical_high }}</td></tr>
+          {% if variety.storability %}
+          <tr><td class="text-muted">库存耐储存性</td><td>
+            <span class="badge bg-secondary">{{ variety.storability }}</span>
+          </td></tr>
+          {% endif %}
+        </table>
+        <p class="small mb-1"><strong>成本参考：</strong>{{ variety.cost_note }}</p>
+        <p class="small mb-1"><strong>进口成本：</strong>{{ variety.import_cost_note }}</p>
+        {% if variety.storability_note %}
+        <p class="small mb-0 text-muted"><strong>库存特性：</strong>{{ variety.storability_note }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">生产端：工艺/原料来源对比（占比按当前供应份额排序）</div>
+      <div class="card-body">
+        {% if variety.production_routes %}
+        {% for r in variety.production_routes %}
+        <div class="mb-3 {% if not loop.last %}pb-3 border-bottom{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong>{{ r.route_name }}</strong>
+            <span class="text-muted small">{{ r.route_type }}</span>
+          </div>
+          <div class="d-flex align-items-center mt-1" style="gap:8px;">
+            <div class="progress flex-grow-1" style="height:8px;">
+              <div class="progress-bar bg-info" style="width:{{ r.market_share_pct }}%;"></div>
+            </div>
+            <span class="small text-nowrap">占比 {{ r.market_share_pct }}%</span>
+          </div>
+          <p class="small mb-1 mt-1">现金成本约 <strong>{{ r.cash_cost }}</strong>
+            {% if r.produces_only_this %}
+            <span class="badge bg-light text-dark border ms-1">无明显副产品</span>
+            {% else %}
+            <span class="badge bg-warning-subtle text-dark border ms-1">联产副产品：{{ r.byproduct_name }}</span>
+            {% endif %}
+          </p>
+          {% if r.note %}<p class="small text-muted mb-1">{{ r.note }}</p>{% endif %}
+          {% if r.byproduct_profit_note %}
+          <p class="small mb-0" style="background:#fff8e6;border:1px solid #ffe69c;border-radius:4px;padding:5px 8px;">
+            💡 {{ r.byproduct_profit_note }}
+          </p>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted mb-0">该品种还没有配置生产工艺/来源数据。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">上下游产业链与成本占比</div>
+      <div class="card-body">
+        {% set upstream = variety.supply_chain_nodes | selectattr("direction", "equalto", "upstream") | list %}
+        {% set downstream = variety.supply_chain_nodes | selectattr("direction", "equalto", "downstream") | list %}
+        {% if upstream %}
+        <p class="small text-muted mb-1">上游原料（占该品种生产成本的比例）</p>
+        {% for n in upstream %}
+        <div class="d-flex align-items-center mb-1" style="gap:8px;">
+          <span class="small text-nowrap" style="width:150px;">{{ n.name }}</span>
+          <div class="progress flex-grow-1" style="height:8px;">
+            <div class="progress-bar bg-secondary" style="width:{{ n.cost_share_pct }}%;"></div>
+          </div>
+          <span class="small text-nowrap">{{ n.cost_share_pct }}%</span>
+        </div>
+        {% if n.note %}<p class="small text-muted" style="margin-left:158px;">{{ n.note }}</p>{% endif %}
+        {% endfor %}
+        {% endif %}
+
+        <div class="text-center my-2">
+          <span class="badge bg-primary">{{ variety.name }}（{{ variety.code }}）</span>
+        </div>
+
+        {% if downstream %}
+        <p class="small text-muted mb-1">下游需求（占下游产品总成本的比例）</p>
+        {% for n in downstream %}
+        <div class="d-flex align-items-center mb-1" style="gap:8px;">
+          <span class="small text-nowrap" style="width:150px;">{{ n.name }}</span>
+          <div class="progress flex-grow-1" style="height:8px;">
+            <div class="progress-bar bg-primary" style="width:{{ n.cost_share_pct }}%;"></div>
+          </div>
+          <span class="small text-nowrap">{{ n.cost_share_pct }}%</span>
+        </div>
+        {% if n.note %}<p class="small text-muted" style="margin-left:158px;">{{ n.note }}</p>{% endif %}
+        {% endfor %}
+        {% endif %}
+        {% if not upstream and not downstream %}
+        <p class="text-muted mb-0">该品种还没有配置上下游产业链数据。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">现状体检</div>
+      <div class="card-body">
+        {% if price_snap %}
+        <p class="mb-1">最新收盘 <strong>{{ price_snap.latest_close }}</strong>（{{ price_snap.latest_date }}）</p>
+        <p class="mb-1">价格历史百分位：<strong>{{ price_snap.percentile }}%</strong>
+          {% if price_snap.percentile >= 90 or price_snap.percentile <= 10 %}<span class="badge bg-danger">历史极端区间</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if position_snap %}
+        <p class="mb-1">持仓量历史百分位：<strong>{{ position_snap.oi_percentile }}%</strong></p>
+        <p class="mb-1">前5席位多空集中度：多 {{ position_snap.top5_long_ratio }}% / 空 {{ position_snap.top5_short_ratio }}%</p>
+        <p class="mb-1">虚实盘比（持仓量/仓单）：
+          <strong>{{ position_snap.virtual_real_ratio }} : 1</strong>
+          {% if position_snap.virtual_real_alert %}<span class="badge bg-danger">超过100:1警戒阈值</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if basis_snap %}
+        <p class="mb-0">基差：{{ basis_snap.basis_value }}（{{ basis_snap.state }}，{{ basis_snap.latest_date }}）</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- K线图 + 事件标注 -->
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">历史K线（事件已按日期标注在图上，悬浮查看；含MA5/10/20均线、持仓量、成交量）</div>
+      <div class="card-body">
+        <div class="small text-muted mb-2 d-flex flex-wrap" style="gap:14px;">
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#6c757d;"></span> 喊话/预期</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#fd7e14;"></span> 具体措施</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#dc3545;"></span> 基本面确认</span>
+          <span>📍带文字气球 = 案例库锚点事件　·　points = 日常资讯事件（悬浮查看详情）</span>
+          <span>半透明气球（标注"未兑现"）= 该案例最终逻辑没有兑现</span>
+          <span><span style="display:inline-block;width:16px;height:9px;background:rgba(220,53,69,0.15);border:1px solid rgba(220,53,69,0.5);"></span> 历史极端期·后来催生了案例
+            <span style="display:inline-block;width:16px;height:9px;background:rgba(108,117,125,0.15);border:1px solid rgba(108,117,125,0.5);margin-left:6px;"></span> 历史极端期·后来没有催生案例</span>
+        </div>
+        <div id="kline" style="width:100%;height:620px;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">事前状态信号 · 价格维度
+        <span class="small text-muted">(不等新闻出现，先看价格本身的极端程度——但价格不极端不代表没事，见下面两个独立通道)</span>
+      </div>
+      <div class="card-body">
+        {% if setup_signal and setup_signal.in_extreme_zone %}
+        <p class="mb-2">
+          价格目前处于历史<strong>{{ setup_signal.latest_percentile }}%</strong>分位（{{ setup_signal.direction }}极端区间），
+          已经连续 <strong>{{ setup_signal.streak_days }}</strong> 个交易日处于这个极端状态
+          （截至 {{ setup_signal.latest_date }}）。
+        </p>
+        {% if setup_precedents and setup_precedents.comparable_count > 0 %}
+        <div class="alert alert-secondary py-2">
+          历史上类似持续天数的极端状态出现过 <strong>{{ setup_precedents.comparable_count }}</strong> 次，
+          其中 <strong>{{ setup_precedents.led_to_event_count }}</strong> 次后续真的催生了案例库里记录的事件/行情，
+          转化率约 <strong>{{ setup_precedents.base_rate }}%</strong>。
+          {% if setup_precedents.used_fallback %}
+          <span class="text-muted">（没有找到持续天数很接近的历史样本，这是放宽后统计全部历史极端状态得出的比率，仅供参考）</span>
+          {% endif %}
+          <span class="text-muted d-block mt-1">这是一个基础概率，不是预测——极端状态可以持续很久都不催生任何事件，不代表"极端了就一定会反转"。</span>
+        </div>
+        <div class="row">
+          {% for ep in setup_precedents.episodes %}
+          <div class="col-md-6">
+            <div class="small border rounded p-2 mb-2 {% if ep.led_to_case_id %}border-danger{% else %}border-secondary{% endif %}">
+              <div>
+                <span class="badge {% if ep.led_to_case_id %}bg-danger{% else %}bg-secondary{% endif %}">
+                  {% if ep.led_to_case_id %}后续催生了事件{% else %}未催生事件{% endif %}
+                </span>
+                <span class="text-muted">{{ ep.mechanism }} · {{ ep.period_start }} ~ {{ ep.period_end }}（持续{{ ep.duration_days }}天）</span>
+              </div>
+              <div class="mt-1">{{ ep.pre_event_signal }}</div>
+              {% if ep.led_to_case_id %}
+              <a class="small" href="{{ url_for('case.case_detail', case_id=ep.led_to_case_id) }}">→ 查看后续案例《{{ ep.led_to_case.name }}》</a>
+              {% else %}
+              <div class="text-muted">后来：{{ ep.note }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">还没有可比的历史事前状态记录，暂时无法给出转化率参考。</p>
+        {% endif %}
+        {% else %}
+        <p class="text-muted mb-0">当前价格不处于历史极端分位（&lt;=10% 或 &gt;=90%），价格维度暂不属于重点观察范围
+          （但利润和筹码这两个独立维度不受价格位置限制，见下方）。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">事前状态信号 · 利润/成本维度
+        <span class="small text-muted">(价格没有历史极端，利润也可能因为成本端变化独立地陷入极端——不用价格分位数硬凑代理)</span>
+      </div>
+      <div class="card-body">
+        {% if margin_signal and margin_signal.in_extreme_zone %}
+        <p class="mb-2">
+          利润率目前处于历史<strong>{{ margin_signal.latest_percentile }}%</strong>分位（{{ margin_signal.direction }}），
+          已经连续 <strong>{{ margin_signal.streak_months }}</strong> 个月处于这个极端状态
+          （截至 {{ margin_signal.latest_period }}）。
+        </p>
+        {% if margin_precedents and margin_precedents.comparable_count > 0 %}
+        <div class="alert alert-secondary py-2">
+          历史上类似持续时长的利润极端出现过 <strong>{{ margin_precedents.comparable_count }}</strong> 次，
+          其中 <strong>{{ margin_precedents.led_to_event_count }}</strong> 次后续催生了案例库里记录的事件/行情，
+          转化率约 <strong>{{ margin_precedents.base_rate }}%</strong>。
+          {% if margin_precedents.used_fallback %}
+          <span class="text-muted">（没有找到持续时长很接近的历史样本，这是放宽后的统计结果，仅供参考）</span>
+          {% endif %}
+          <span class="text-muted d-block mt-1">同样是基础概率，不是预测。</span>
+        </div>
+        <div class="row">
+          {% for ep in margin_precedents.episodes %}
+          <div class="col-md-6">
+            <div class="small border rounded p-2 mb-2 {% if ep.led_to_case_id %}border-danger{% else %}border-secondary{% endif %}">
+              <div>
+                <span class="badge {% if ep.led_to_case_id %}bg-danger{% else %}bg-secondary{% endif %}">
+                  {% if ep.led_to_case_id %}后续催生了事件{% else %}未催生事件{% endif %}
+                </span>
+                <span class="text-muted">{{ ep.mechanism }} · {{ ep.period_start }} ~ {{ ep.period_end }}</span>
+              </div>
+              <div class="mt-1">{{ ep.pre_event_signal }}</div>
+              {% if ep.led_to_case_id %}
+              <a class="small" href="{{ url_for('case.case_detail', case_id=ep.led_to_case_id) }}">→ 查看后续案例《{{ ep.led_to_case.name }}》</a>
+              {% else %}
+              <div class="text-muted">后来：{{ ep.note }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">还没有可比的历史利润极端记录，暂时无法给出转化率参考。</p>
+        {% endif %}
+        {% else %}
+        <p class="text-muted mb-0">利润率数据不足或当前不处于历史极端，利润维度暂不属于重点观察范围。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">事前状态信号 · 筹码异常（资金布局型）
+        <span class="small text-muted">(不看价格所处位置，任何时候都检测——内幕/嗅觉资金什么价位都能提前布局)</span>
+      </div>
+      <div class="card-body">
+        {% if chip_signal and chip_signal.triggered %}
+        <div class="alert alert-warning py-2 mb-2">检测到筹码异常，可能有资金已经提前动作：</div>
+        <ul class="mb-1">
+          {% for r in chip_signal.reasons %}<li>{{ r }}</li>{% endfor %}
+        </ul>
+        <p class="small text-muted mb-0">{{ chip_signal.note }}</p>
+        {% elif chip_signal %}
+        <p class="text-muted mb-0">当前持仓量、仓单变化率、虚实盘比都不算异常，没有检测到筹码布局迹象。</p>
+        {% else %}
+        <p class="text-muted mb-0">数据不足，暂无法判断。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">关键关注点清单 — 现状体检结果</div>
+      <div class="card-body">
+        {% for fs in factor_status %}
+        <div class="factor-row {% if fs.status == '偏热' %}hot{% elif fs.status == '异常' %}alert{% endif %}">
+          <strong>{{ fs.factor.factor_tag.name }}</strong>
+          <span class="badge status-badge-{{ fs.status }}">{{ fs.status }}</span>
+          <span class="text-muted">重要性 {{ fs.factor.importance_rank }}/5</span>
+          <div class="small text-muted">监控要点：{{ fs.factor.monitoring_note }}</div>
+          <div class="small">{{ fs.reason }}</div>
+        </div>
+        {% else %}
+        <p class="text-muted">该品种还没有配置关注点清单。</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">历史相似案例参照（按"激活因素 + 基本面状态 + 当前触发通道"匹配，不是预测）</div>
+      <div class="card-body">
+        {% if matched_cases %}
+        {% for m in matched_cases %}
+        <div class="mb-3 pb-2 border-bottom">
+          <a href="{{ url_for('case.case_detail', case_id=m.case.id) }}">
+            <strong>{{ m.case.name }}</strong>
+          </a>
+          <span class="match-score text-primary">{{ m.score_label }}（{{ m.score }}分）</span>
+          {% if m.case.is_failure_case %}<span class="badge failure-case-tag">逻辑未兑现案例</span>{% endif %}
+          <ul class="small mb-0">
+            {% for r in m.reasons %}<li>{{ r }}</li>{% endfor %}
+          </ul>
+          {% if m.risk_reward %}
+          <div class="small mt-1" style="background:#f3f3f3;border-radius:4px;padding:6px 10px;">
+            风险回报参考（从和"现在"对应的起点往后，这条案例真实走出来的路径）：
+            最大涨幅 <strong class="text-success">{{ '%+.1f'|format(m.risk_reward.max_gain_pct) }}%</strong>
+            最大回撤 <strong class="text-danger">{{ '%+.1f'|format(m.risk_reward.max_drawdown_pct) }}%</strong>
+            最终 <strong>{{ '%+.1f'|format(m.risk_reward.final_pct) }}%</strong>
+            用时 <strong>{{ m.risk_reward.duration_days }}</strong> 个交易日
+          </div>
+          {% endif %}
+          {% if m.precedent_stats %}
+          <div class="small mt-1" style="background:#fff8e6;border:1px solid #ffe69c;border-radius:4px;padding:6px 10px;">
+            ⚠ 该案例对应的前置状态（{{ m.precedent_stats.dimension }}维度 · {{ m.precedent_stats.mechanism }}）历史上同类型出现过
+            <strong>{{ m.precedent_stats.comparable_count }}</strong> 次，其中 <strong>{{ m.precedent_stats.led_to_event_count }}</strong> 次真正催生了事件，
+            历史转化率约 <strong>{{ m.precedent_stats.base_rate }}%</strong> —— 下面对比图形状相似，不代表历史一定重演。
+          </div>
+          {% endif %}
+          {% if m.comparison %}
+          <div class="small text-muted mt-2 mb-1">
+            K线对比（两个品种/年份的价格水平不同，分开画更看得清真实价格；横轴按距 day 0 的交易日数对齐，虚线标出 day 0；灰色虚线=前置极端状态起点；三角标记=案例行情演绎的关键节点；同样含MA5/10/20、持仓量、成交量）
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <div class="small fw-bold text-center">现在</div>
+              <div class="case-compare-chart" id="compare-now-{{ m.case.id }}" style="height:340px;"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="small fw-bold text-center">{{ m.comparison.case_variety_name }}（历史，{{ m.case.name }}）</div>
+              <div class="case-compare-chart" id="compare-case-{{ m.case.id }}" style="height:340px;"></div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% if filtered_case_count %}
+        <p class="small text-muted mb-0">另外还有 {{ filtered_case_count }} 条案例因为匹配分不够（相关性较弱）被筛掉了，不在上面展示。</p>
+        {% endif %}
+        {% else %}
+        <p class="text-muted mb-0">没有找到直接相关的历史案例参照 — 这可能是历史上少见的组合，不强行凑一个不相关的案例出来，请结合其他信息自行判断。
+          {% if filtered_case_count %}（有 {{ filtered_case_count }} 条案例命中了一部分但匹配分不够，同样没有强行展示）{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const klineRaw = {{ kline_data | tojson }};
+const events = {{ events_for_chart | tojson }};
+const setupRegions = {{ setup_regions | tojson }};
+const caseComparisons = [
+  {% for m in matched_cases %}
+  {% if m.comparison %}
+  { caseId: {{ m.case.id }}, data: {{ m.comparison | tojson }} },
+  {% endif %}
+  {% endfor %}
+];
+
+const dates = klineRaw.map(r => r[0]);
+const ohlc = klineRaw.map(r => [r[1], r[2], r[3], r[4]]); // open, close, low, high
+const volumes = klineRaw.map(r => r[5]);
+const openInterests = klineRaw.map(r => r[6] || 0);
+const closesForMA = klineRaw.map(r => r[2]);
+
+// 简单移动均线：只用"这天之前(含当天)"的收盘价，天数不够的地方留空(null)，不拿不够的天数
+// 硬凑一条不准的均线出来。
+function movingAverage(values, window) {
+  const out = [];
+  for (let i = 0; i < values.length; i++) {
+    if (i + 1 < window) { out.push(null); continue; }
+    const seg = values.slice(i + 1 - window, i + 1);
+    out.push(seg.some(v => v == null) ? null : Number((seg.reduce((a, b) => a + b, 0) / window).toFixed(2)));
+  }
+  return out;
+}
+const ma5 = movingAverage(closesForMA, 5);
+const ma10 = movingAverage(closesForMA, 10);
+const ma20 = movingAverage(closesForMA, 20);
+
+// 之前的版本给"每一个"事件都常驻显示名称标签，事件一多，图上文字堆在一起，抓不到重点。
+// 现在做区分：真正值得记住的是"案例库里的标志性事件"(source=历史案例库，数量少，是K线图
+// 应该突出的锚点)；其余"模拟最新资讯"是日常琐碎事件，数量多，只留一个不挡视线的小圆点，
+// 具体内容仍然通过悬停这一天的axis提示框查看，而不是让每个点都常驻刷屏式的文字标签。
+const eventsByDate = {};
+events.forEach(e => { (eventsByDate[e.date] = eventsByDate[e.date] || []).push(e); });
+
+function shortTitle(t) {
+  return t.length > 10 ? t.slice(0, 10) + '…' : t;
+}
+function levelColor(lvl) {
+  return lvl >= 3 ? '#dc3545' : (lvl === 2 ? '#fd7e14' : '#6c757d');
+}
+
+const caseMarkPoints = events.filter(e => e.is_case).map(e => {
+  const idx = dates.indexOf(e.date);
+  if (idx === -1 || !ohlc[idx]) return null;
+  const high = ohlc[idx][3]; // [open, close, low, high] 中的最高价，气球标在最高价上方
+  // "逻辑未兑现"的案例用半透明气球+灰字区分开，不然光看图会把所有案例锚点当成同等可信的参照。
+  return {
+    name: e.title,
+    coord: [e.date, high],
+    value: e.factor,
+    symbol: 'pin',
+    symbolSize: 34,
+    itemStyle: { color: levelColor(e.level), opacity: e.is_failure ? 0.45 : 1 },
+    label: {
+      show: true,
+      position: 'top',
+      distance: 10,
+      fontSize: 11,
+      fontWeight: 'bold',
+      color: e.is_failure ? '#868e96' : '#212529',
+      formatter: shortTitle(e.title) + (e.is_failure ? '（未兑现）' : ''),
+    },
+  };
+}).filter(Boolean);
+
+const routineMarkPoints = events.filter(e => !e.is_case).map(e => {
+  const idx = dates.indexOf(e.date);
+  if (idx === -1 || !ohlc[idx]) return null;
+  const high = ohlc[idx][3];
+  return {
+    name: e.title,
+    coord: [e.date, high],
+    value: e.factor,
+    symbol: 'circle',
+    symbolSize: 7,
+    itemStyle: { color: levelColor(e.level), opacity: 0.75 },
+    label: { show: false },
+  };
+}).filter(Boolean);
+
+// 历史"事前状态极端期"背景色块——直接把 SetupEpisode 落到K线上，用户就能亲眼看到
+// "转化率约50%"这句话背后，另外那次没催生事件的极端状态具体是哪一段、后来怎么走的，
+// 而不是只能相信文字。
+function regionAt(d) {
+  return setupRegions.find(r => d >= r.start && d <= r.end);
+}
+// SetupEpisode 的起止日期是人工填的日历日期，不一定正好落在交易日上（比如刚好是周末）——
+// category轴按精确字符串匹配，对不上就直接不渲染，这段区间会悄悄消失。所以这里snap到
+// dates数组里离得最近的真实交易日，而不是要求日期精确对上。
+function nearestTradingDateOnOrAfter(target) {
+  return dates.find(d => d >= target) || dates[dates.length - 1];
+}
+function nearestTradingDateOnOrBefore(target) {
+  let found = dates[0];
+  for (const d of dates) {
+    if (d <= target) found = d; else break;
+  }
+  return found;
+}
+const regionMarkArea = setupRegions.map(r => ([
+  {
+    xAxis: nearestTradingDateOnOrAfter(r.start),
+    itemStyle: { color: r.led_to_case ? 'rgba(220,53,69,0.12)' : 'rgba(108,117,125,0.12)' },
+  },
+  { xAxis: nearestTradingDateOnOrBefore(r.end) },
+]));
+
+const chart = echarts.init(document.getElementById('kline'));
+chart.setOption({
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'cross' },
+    formatter: function (params) {
+      const list = Array.isArray(params) ? params : [params];
+      const p = list.find(x => x.seriesType === 'candlestick') || list[0];
+      if (!p) return '';
+      const d = p.axisValue !== undefined ? p.axisValue : p.name;
+      const idx = dates.indexOf(d);
+      const bar = ohlc[idx];
+      // 每个字段单独一行，不挤在一行里，悬浮时才看得清楚。
+      const lines = [d];
+      if (bar) {
+        lines.push(`开：${bar[0]}`);
+        lines.push(`高：${bar[3]}`);
+        lines.push(`低：${bar[2]}`);
+        lines.push(`收：${bar[1]}`);
+      }
+      lines.push(`成交量：${volumes[idx]}`);
+      lines.push(`持仓量：${openInterests[idx]}`);
+      if (ma5[idx] != null) lines.push(`MA5：${ma5[idx]}`);
+      if (ma10[idx] != null) lines.push(`MA10：${ma10[idx]}`);
+      if (ma20[idx] != null) lines.push(`MA20：${ma20[idx]}`);
+      const evs = eventsByDate[d];
+      if (evs && evs.length) {
+        evs.forEach(e => {
+          lines.push(`<span style="color:${levelColor(e.level)}">● ${e.title}</span>（${e.factor}）`);
+        });
+      }
+      const region = regionAt(d);
+      if (region) {
+        const tag = region.led_to_case ? '后来催生了案例' : '后来没有催生任何案例';
+        lines.push(`<span style="color:${region.led_to_case ? '#dc3545' : '#6c757d'}">▉ 历史极端期（${region.mechanism}）· ${tag}</span>`);
+      }
+      return lines.join('<br/>');
+    },
+  },
+  axisPointer: { link: [{ xAxisIndex: 'all' }] },
+  // 图例里的每一项默认就是可以点击切换显示/隐藏的(ECharts legend自带这个行为)——
+  // 均线、成交量、持仓量都放进同一个图例，点哪个就能单独把哪个藏起来/显示出来。
+  legend: { data: ['MA5', 'MA10', 'MA20', '成交量', '持仓量'], top: 8, left: 60, textStyle: { fontSize: 11 } },
+  grid: [
+    { left: 60, right: 60, top: 40, height: '58%' },
+    { left: 60, right: 60, top: '76%', height: '18%' },
+  ],
+  xAxis: [
+    { type: 'category', data: dates, boundaryGap: true, scale: true, gridIndex: 0, axisLabel: { show: false } },
+    { type: 'category', data: dates, boundaryGap: true, scale: true, gridIndex: 1 },
+  ],
+  yAxis: [
+    { scale: true, gridIndex: 0 },
+    // 成交量和持仓量叠在同一个格子里显示，但两者数量级经常差很多(比如豆粕的持仓量能到
+    // 百万手，成交量常常只有几万手)，硬挤一个轴会把成交量压成看不见的一条线，所以左右各给
+    // 一个轴：左轴管成交量(灰色柱)，右轴管持仓量(绿色线)，颜色跟图例、轴标签对应得上。
+    { scale: true, gridIndex: 1, splitNumber: 2, name: '成交量', nameTextStyle: { fontSize: 10, color: '#6c757d' }, axisLabel: { fontSize: 9 }, axisLine: { lineStyle: { color: '#adb5bd' } } },
+    { scale: true, gridIndex: 1, splitNumber: 2, name: '持仓量', nameTextStyle: { fontSize: 10, color: '#20c997' }, axisLabel: { fontSize: 9 }, axisLine: { lineStyle: { color: '#20c997' } }, position: 'right' },
+  ],
+  dataZoom: [
+    { type: 'inside', xAxisIndex: [0, 1], start: 60, end: 100 },
+    { type: 'slider', xAxisIndex: [0, 1], start: 60, end: 100 },
+  ],
+  series: [
+    {
+      type: 'candlestick', name: '收盘', data: ohlc, xAxisIndex: 0, yAxisIndex: 0,
+      itemStyle: { color: '#dc3545', color0: '#198754', borderColor: '#dc3545', borderColor0: '#198754' },
+      markPoint: { data: [...routineMarkPoints, ...caseMarkPoints] },
+      markArea: { silent: true, data: regionMarkArea },
+    },
+    { type: 'line', name: 'MA5', data: ma5, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.5, color: '#0d6efd' } },
+    { type: 'line', name: 'MA10', data: ma10, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.5, color: '#6f42c1' } },
+    { type: 'line', name: 'MA20', data: ma20, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.5, color: '#fd7e14' } },
+    { type: 'bar', name: '成交量', data: volumes, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: '#adb5bd' } },
+    { type: 'line', name: '持仓量', data: openInterests, xAxisIndex: 1, yAxisIndex: 2, showSymbol: false, lineStyle: { width: 1.5, color: '#20c997' } },
+  ],
+});
+window.addEventListener('resize', () => chart.resize());
+
+// 每个匹配案例下面画两张独立的K线小图，而不是叠在一张图里——两个品种/两个年份的绝对价格
+// 水平天差地别（比如现在1400多 vs 案例当年2000多），硬摆在同一个价格轴上要么现在这段被压成
+// 一条线，要么案例那段被压扁，谁都看不清真实的开高低收。所以拆成两张图，各自用各自的价格轴，
+// 只在横轴上用"距day 0的交易日数"对齐——两张图的 x=0 都对应事件发生的那一天，用虚线标出来，
+// 直接左右对比着看，比归一化百分比曲线更直观地看到真实价格怎么走的。
+const compareCharts = [];
+
+function stageColor(stage) {
+  if (stage === '预期炒作期') return '#0d6efd';
+  if (stage === '情绪消退期') return '#fd7e14';
+  return '#6c757d'; // 现实回归期 / 其他
+}
+
+function renderMiniKline(elId, series, dayZeroLabel, extra) {
+  extra = extra || {};
+  const setupOffset = extra.setupOffset;
+  const timelineMarkers = extra.timelineMarkers || [];
+
+  const el = document.getElementById(elId);
+  if (!el || !series || !series.length) return null;
+
+  const offsets = series.map(p => p.offset);
+  const ohlcData = series.map(p => [p.open, p.close, p.low, p.high]);
+  const volData = series.map(p => p.volume || 0);
+  const oiData = series.map(p => p.open_interest || 0);
+  const ma5Data = series.map(p => p.ma5);
+  const ma10Data = series.map(p => p.ma10);
+  const ma20Data = series.map(p => p.ma20);
+  const dateByOffset = {}; series.forEach(p => { dateByOffset[p.offset] = p.date; });
+  const timelineByOffset = {}; timelineMarkers.forEach(t => { (timelineByOffset[t.offset] = timelineByOffset[t.offset] || []).push(t); });
+  const zeroIdx = offsets.indexOf(0);
+  // day0 常常靠近图的最右边（"现在"这张图 day0 就是最后一天），文字标签往右伸会被切掉，
+  // 所以离右边界近时把文字往左对齐（贴着虚线往左写），离左边界近时反过来。
+  const labelAlign = zeroIdx > offsets.length * 0.6 ? 'right' : 'left';
+
+  // "极端状态起点"(setup_start_date) 通常比 day0(事件被市场注意到的那天) 早得多——这正是
+  // "事件是滞后确认"这个判断的核心论据，之前这个时间点只存在文字里，从来没在图上画出来过。
+  const markLineData = [];
+  if (zeroIdx !== -1) {
+    markLineData.push({
+      xAxis: zeroIdx,
+      label: { formatter: dayZeroLabel, fontSize: 9, color: '#6c757d', align: labelAlign },
+      lineStyle: { type: 'dashed', color: '#6c757d', width: 1 },
+    });
+  }
+  if (setupOffset != null) {
+    const setupIdx = offsets.indexOf(setupOffset);
+    if (setupIdx !== -1 && setupIdx !== zeroIdx) {
+      const setupAlign = setupIdx > offsets.length * 0.6 ? 'right' : 'left';
+      markLineData.push({
+        xAxis: setupIdx,
+        label: { formatter: '极端状态起点', fontSize: 9, color: '#adb5bd', align: setupAlign },
+        lineStyle: { type: 'dotted', color: '#adb5bd', width: 1.5 },
+      });
+    }
+  }
+
+  // 案例本身的关键节点(预期炒作期/情绪消退期/现实回归期)之前只在文字时间线里存在，
+  // 这里换算成三角标记画在历史那侧K线上——如果形状像，用户能直接看到历史上大概会
+  // 经历哪几个阶段。同一个阶段常常有好几个节点挤在一起，每个都常驻打字重蹈了之前
+  // K线事件"标签堆成一团看不清"的覆辙，所以只给每个阶段第一次出现的点常驻文字标签，
+  // 其余同阶段的点只留三角形状，具体内容照样靠悬停这一天的提示框看。
+  const seenStages = new Set();
+  const timelineMarkPoints = timelineMarkers.map(t => {
+    const idx = offsets.indexOf(t.offset);
+    if (idx === -1) return null;
+    const price = t.price != null ? t.price : ohlcData[idx][3];
+    const firstOfStage = !seenStages.has(t.stage);
+    seenStages.add(t.stage);
+    return {
+      name: t.stage,
+      coord: [t.offset, price],
+      symbol: 'triangle',
+      symbolSize: firstOfStage ? 9 : 7,
+      itemStyle: { color: stageColor(t.stage), opacity: firstOfStage ? 1 : 0.7 },
+      label: firstOfStage
+        ? { show: true, position: 'top', fontSize: 8, color: stageColor(t.stage), formatter: t.stage.replace('期', '') }
+        : { show: false },
+    };
+  }).filter(Boolean);
+
+  const c = echarts.init(el);
+  c.setOption({
+    tooltip: {
+      trigger: 'axis',
+      formatter: function (params) {
+        // ECharts的category轴不管底层data是数字还是字符串，tooltip里给回来的axisValue
+        // 永远是字符串(比如offsets数组里存的是数字-20，这里拿到的却是"-20")。之前直接拿
+        // 字符串去 offsets.indexOf() 找位置，数字数组严格等于比较永远找不到、返回-1，
+        // 所以后面所有按 idx 取的成交量/持仓量/开高低收全部变成 undefined。这里先转成
+        // 数字再去找，和历史K线图(那边轴数据本来就是日期字符串，不受影响)保持同样准确。
+        const off = Number(params[0].axisValue);
+        const idx = offsets.indexOf(off);
+        const bar = ohlcData[idx];
+        // 每个字段单独一行，跟主K线图保持同样的显示习惯。
+        const lines = [`T${off >= 0 ? '+' : ''}${off}${dateByOffset[off] ? '（' + dateByOffset[off] + '）' : ''}`];
+        if (bar) {
+          lines.push(`开：${bar[0]}`);
+          lines.push(`高：${bar[3]}`);
+          lines.push(`低：${bar[2]}`);
+          lines.push(`收：${bar[1]}`);
+        }
+        lines.push(`成交量：${volData[idx]}`);
+        lines.push(`持仓量：${oiData[idx]}`);
+        if (ma5Data[idx] != null) lines.push(`MA5：${ma5Data[idx]}`);
+        if (ma10Data[idx] != null) lines.push(`MA10：${ma10Data[idx]}`);
+        if (ma20Data[idx] != null) lines.push(`MA20：${ma20Data[idx]}`);
+        const stages = timelineByOffset[off];
+        if (stages && stages.length) {
+          stages.forEach(t => {
+            lines.push(`<span style="color:${stageColor(t.stage)}">▲ ${t.stage}</span>：${t.description || ''}`);
+          });
+        }
+        return lines.join('<br/>');
+      },
+    },
+    axisPointer: { link: [{ xAxisIndex: 'all' }] },
+    // 跟主K线图一样：图例里每一项默认就能点击切换显示/隐藏，MA5/10/20和成交量/持仓量
+    // 都放进来，点哪个就能单独把哪个藏起来。
+    legend: { data: ['MA5', 'MA10', 'MA20', '成交量', '持仓量'], top: 0, left: 0, textStyle: { fontSize: 9 }, itemWidth: 12, itemHeight: 8 },
+    grid: [
+      { left: 50, right: 50, top: 28, height: '46%' },
+      { left: 50, right: 50, top: '68%', height: '20%' },
+    ],
+    xAxis: [
+      { type: 'category', data: offsets, boundaryGap: true, scale: true, gridIndex: 0, axisLabel: { show: false } },
+      {
+        type: 'category', data: offsets, boundaryGap: true, scale: true, gridIndex: 1,
+        name: '距day0交易日数', nameLocation: 'middle', nameGap: 20,
+        nameTextStyle: { fontSize: 9 }, axisLabel: { fontSize: 8 },
+      },
+    ],
+    yAxis: [
+      { scale: true, gridIndex: 0, axisLabel: { fontSize: 9 } },
+      // 成交量和持仓量叠在同一格里，数量级经常差很多，所以左右分轴：左轴=成交量(灰色柱)，
+      // 右轴=持仓量(绿色线)，跟主K线图的做法保持一致。
+      { scale: true, gridIndex: 1, splitNumber: 2, name: '成交', nameTextStyle: { fontSize: 8, color: '#6c757d' }, axisLabel: { fontSize: 8 }, axisLine: { lineStyle: { color: '#adb5bd' } } },
+      { scale: true, gridIndex: 1, splitNumber: 2, name: '持仓', nameTextStyle: { fontSize: 8, color: '#20c997' }, axisLabel: { fontSize: 8 }, axisLine: { lineStyle: { color: '#20c997' } }, position: 'right' },
+    ],
+    series: [
+      {
+        type: 'candlestick', data: ohlcData, xAxisIndex: 0, yAxisIndex: 0,
+        itemStyle: { color: '#dc3545', color0: '#198754', borderColor: '#dc3545', borderColor0: '#198754' },
+        markLine: markLineData.length ? { symbol: 'none', data: markLineData } : undefined,
+        markPoint: timelineMarkPoints.length ? { data: timelineMarkPoints } : undefined,
+      },
+      { type: 'line', name: 'MA5', data: ma5Data, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.2, color: '#0d6efd' } },
+      { type: 'line', name: 'MA10', data: ma10Data, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.2, color: '#6f42c1' } },
+      { type: 'line', name: 'MA20', data: ma20Data, xAxisIndex: 0, yAxisIndex: 0, showSymbol: false, lineStyle: { width: 1.2, color: '#fd7e14' } },
+      { type: 'bar', name: '成交量', data: volData, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: '#adb5bd' } },
+      { type: 'line', name: '持仓量', data: oiData, xAxisIndex: 1, yAxisIndex: 2, showSymbol: false, lineStyle: { width: 1.2, color: '#20c997' } },
+    ],
+  });
+  return c;
+}
+
+caseComparisons.forEach(function (item) {
+  const nowChart = renderMiniKline('compare-now-' + item.caseId, item.data.current_series, 'day0（今天）');
+  // "极端状态起点"和案例行情演绎的关键节点，都是这条历史案例自己的概念，"现在"这段
+  // 还没发生任何事，不套用这些标记。
+  const caseChart = renderMiniKline('compare-case-' + item.caseId, item.data.case_series, 'day0（事件日）', {
+    setupOffset: item.data.setup_offset,
+    timelineMarkers: item.data.timeline_markers,
+  });
+  if (nowChart) compareCharts.push(nowChart);
+  if (caseChart) compareCharts.push(caseChart);
+});
+window.addEventListener('resize', () => compareCharts.forEach(c => c.resize()));
+</script>
+{% endblock %}
