@@ -669,6 +669,56 @@ def compute_margin_signal(variety: Variety):
     }
 
 
+# margin_value 的符号约定是"正=盈利、负=亏损"（见 ProfitMarginRecord 模型注释），但不同
+# 品种的数值量级不完全一样，0 附近多宽算"盈亏平衡"是个粗略的经验带宽，不是精确的财务概念——
+# 只是为了不让 8.86 和 0.03 这种量级差异很大的正值，都被同样简单粗暴地归成"盈利"。
+PROFIT_BREAKEVEN_BAND = 2  # margin_value 落在 [-2, 2] 区间内，记"盈亏平衡"
+
+
+def get_profit_status_label(variety: Variety):
+    """
+    "当前行业状态/当前盈利状态"这行文字该显示什么——2026-08新加，取代之前页面直接显示
+    `Variety.profit_status` 静态字段的做法。
+
+    背景：`Variety.profit_status` 是纯人工在 /admin 填的静态值，系统不会自动更新它，
+    实际用下来已经出现过好几次和真实月度数据对不上的情况（比如纯碱静态填的是"亏损"，
+    但最新一条 ProfitMarginRecord 早就转正了）——纯手工维护这种会随时间变化的状态，
+    本质上和"每天/每月都要记得回来改一下"是同一个问题，容易忘、容易漏。
+
+    这里改成优先用 ProfitMarginRecord 里最新一条月度数据的正负号自动推断："正值→盈利，
+    负值→亏损，绝对值在 PROFIT_BREAKEVEN_BAND 以内→盈亏平衡"。只有当这个品种完全没有
+    导入过月度利润率数据时（比如刚建档的新品种），才退回去显示人工填的 `profit_status`
+    静态值当兜底；如果连静态值也没填，就如实显示"暂无数据"，不瞎猜。
+
+    返回值带 `source` 字段，方便页面区分"这是自动算出来的"还是"这是人工填的兜底值"，
+    不把两者混为一谈——这跟第5.3节"催生了事件≠叙事被验证"是同一种"给结论的同时说清楚
+    这个结论是怎么来的"的一贯做法。
+    """
+    latest = (
+        ProfitMarginRecord.query.filter_by(variety_id=variety.id)
+        .order_by(ProfitMarginRecord.period.desc())
+        .first()
+    )
+    if latest is not None and latest.margin_value is not None:
+        if latest.margin_value > PROFIT_BREAKEVEN_BAND:
+            label = "盈利"
+        elif latest.margin_value < -PROFIT_BREAKEVEN_BAND:
+            label = "亏损"
+        else:
+            label = "盈亏平衡"
+        return {
+            "label": label,
+            "source": "dynamic",
+            "period": latest.period,
+            "value": latest.margin_value,
+        }
+
+    if variety.profit_status:
+        return {"label": variety.profit_status, "source": "static_fallback", "period": None, "value": None}
+
+    return {"label": "暂无数据", "source": "none", "period": None, "value": None}
+
+
 # ---------------------------------------------------------------------------
 # 筹码异常信号（资金布局型）——刻意不依赖价格分位数，任何价格位置都要检查
 # ---------------------------------------------------------------------------
