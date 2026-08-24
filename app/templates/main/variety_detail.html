@@ -267,6 +267,18 @@
               <div class="mt-1">{{ ep.pre_event_signal }}</div>
               {% if ep.led_to_case_id %}
               <a class="small" href="{{ url_for('case.case_detail', case_id=ep.led_to_case_id) }}">→ 查看后续案例《{{ ep.led_to_case.name }}》</a>
+              {% if ep.led_to_case.is_failure_case %}
+              <!--
+                "催生了事件"只代表"极端状态之后案例库里有一条对应记录"，不代表这条案例后来
+                被验证是对的——是否兑现是 is_failure_case 这个独立字段，两者故意分开统计
+                （见 docs/system_design.md 5.3节），避免只挑"后来验证对了"的案例才算数、
+                制造幸存者偏差。但红色"后续催生了事件"徽章不加说明的话，容易被直接读成
+                "信号应验了"，所以这里补一行提示，别让人点进详情页才发现这其实是个失败案例。
+              -->
+              <div class="small mt-1" style="color:#b02a37;">
+                ⚠ 该案例最终被标记为「逻辑未兑现」——催生了事件不等于叙事被验证，详见案例详情里的"市场解读 vs 真实驱动"。
+              </div>
+              {% endif %}
               {% else %}
               <div class="text-muted">后来：{{ ep.note }}</div>
               {% endif %}
@@ -318,6 +330,12 @@
               <div class="mt-1">{{ ep.pre_event_signal }}</div>
               {% if ep.led_to_case_id %}
               <a class="small" href="{{ url_for('case.case_detail', case_id=ep.led_to_case_id) }}">→ 查看后续案例《{{ ep.led_to_case.name }}》</a>
+              {% if ep.led_to_case.is_failure_case %}
+              <!-- 同上（价格维度那个卡片）：催生了事件≠叙事被验证，这里补同样的提示 -->
+              <div class="small mt-1" style="color:#b02a37;">
+                ⚠ 该案例最终被标记为「逻辑未兑现」——催生了事件不等于叙事被验证，详见案例详情里的"市场解读 vs 真实驱动"。
+              </div>
+              {% endif %}
               {% else %}
               <div class="text-muted">后来：{{ ep.note }}</div>
               {% endif %}
