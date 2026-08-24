@@ -39,11 +39,26 @@ class VarietyAdmin(BaseAdmin):
         "code": "代码", "name": "名称", "exchange": "交易所", "sector": "板块", "unit": "交易单位",
         "tick_size": "最小变动价位", "contract_months": "合约月份", "pricing_type": "定价权归属类型",
         "anchor_benchmark": "核心锚定标的", "linkage_coefficient": "内外盘联动系数",
-        "cost_note": "成本说明", "import_cost_note": "进口成本参考", "profit_status": "当前盈利状态",
+        "cost_note": "成本说明", "import_cost_note": "进口成本参考",
+        "profit_status": "当前盈利状态（兜底值，选填）",
         "historical_low": "历史低点", "historical_high": "历史高点", "intro": "品种介绍",
         "storability": "库存耐储存性", "storability_note": "库存特性说明",
     }
-    form_excluded_columns = ["factors", "contracts", "cases", "production_routes", "supply_chain_nodes"]
+    form_args = {
+        "profit_status": {
+            "description": "只在这个品种还没有任何「月度利润率」记录时才会被页面显示出来；"
+                            "只要在「月度利润率」里给这个品种录了数据，页面会改成自动按最新数据"
+                            "的正负号推断盈利/盈亏平衡/亏损，不再读这个字段——所以新建品种时可以"
+                            "先留空，不影响页面正常显示（会显示「暂无数据」，等有月度数据后自动变好）。",
+        },
+    }
+    # profit_margin_records 是2026-08新加的关系（修复月度利润率表单缺品种字段的bug），
+    # 排除掉是因为它应该去"月度利润率"自己的后台页面(ProfitMarginRecordAdmin)录入，
+    # 不需要在品种编辑页里内嵌一份，跟 factors/contracts/cases 这几个排除的道理一样。
+    form_excluded_columns = [
+        "factors", "contracts", "cases", "production_routes", "supply_chain_nodes",
+        "profit_margin_records",
+    ]
     column_searchable_list = ["code", "name"]
 
 
