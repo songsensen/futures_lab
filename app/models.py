@@ -47,7 +47,14 @@ class Variety(db.Model):
     # 1.3 成本参考
     cost_note = db.Column(db.Text)  # 生产成本区间说明（自由文本，比如多种工艺对比）
     import_cost_note = db.Column(db.Text)  # 进口成本参考
-    profit_status = db.Column(db.String(16))  # 当前盈利 / 盈亏平衡 / 亏损
+    # 当前盈利 / 盈亏平衡 / 亏损 —— 2026-08之前页面直接显示这个字段，但它是纯人工填写、
+    # 不会自动更新的静态值，容易和 ProfitMarginRecord 里真实的月度利润率数据脱节（已经
+    # 实际发生过：填的是"亏损"，最新月度数据其实已经转正）。2026-08起页面改成优先显示
+    # analysis.py 的 get_profit_status_label() 算出来的动态结果（从最新一条
+    # ProfitMarginRecord 的正负号推断），这个字段降级为"还没有月度利润率数据时的兜底
+    # 显示值"——新建品种时可以不填，等第一条月度利润率数据导入后，页面会自动改用动态结果，
+    # 不需要再手动维护这个字段。
+    profit_status = db.Column(db.String(16))
     historical_low = db.Column(db.Float)
     historical_high = db.Column(db.Float)
 
@@ -70,6 +77,16 @@ class Variety(db.Model):
     supply_chain_nodes = db.relationship(
         "SupplyChainNode", backref="variety", cascade="all, delete-orphan",
         order_by="SupplyChainNode.order_index",
+    )
+    # 2026-08修复：这条关系之前一直没声明，导致 ProfitMarginRecord 那张表虽然有
+    # variety_id 外键列，但没有真正的 ORM 关系——Flask-Admin 的表单/列表都是靠扫描
+    # relationship 来生成外键下拉框和显示列的，光有外键列它认不出来，后台"月度利润率"
+    # 新建页面因此完全没有"品种"这个字段可选，列表页的"品种"列也永远是空的（能连去数据库
+    # 但没法在网页上正常用）。加上这条 relationship 之后两处都会自动恢复正常，不需要再
+    # 改 app/admin.py 里的配置。
+    profit_margin_records = db.relationship(
+        "ProfitMarginRecord", backref="variety", cascade="all, delete-orphan",
+        order_by="ProfitMarginRecord.period",
     )
 
     def __repr__(self):
