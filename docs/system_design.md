@@ -112,7 +112,8 @@ futures_lab/
 | unit / tick_size / contract_months | 交易单位、最小变动价位、合约月份 |
 | pricing_type | 定价权归属类型：进口依赖型 / 国内供需型 / 全球金融属性型 |
 | anchor_benchmark / linkage_coefficient | 核心锚定标的、内外盘联动系数 —— **目前只在页面上展示，没有被 analysis.py 任何函数实际计算使用**，是个已知的"有数据没接入逻辑"的字段，见第8节 |
-| cost_note / import_cost_note / profit_status | 成本区间说明、进口成本参考、当前盈利状态 |
+| cost_note / import_cost_note | 成本区间说明、进口成本参考 |
+| profit_status | 当前盈利状态（盈利/盈亏平衡/亏损）——**2026-08起降级为兜底值**，页面优先显示`get_profit_status_label()`从`ProfitMarginRecord`最新一条数据动态推断的结果，只有这个品种完全没有月度利润率数据时才会用到这个人工填的静态值，详见5.3节和第8节 |
 | historical_low / historical_high | 历史高低点（目前是静态字段，不是从 DailyBar 动态算出来的） |
 | storability / storability_note | 库存耐储存性（耐储存/不耐储存/中等）及说明——用于判断"库存高企"这个信号对不同品种的含义和持续性是否一样 |
 
@@ -178,6 +179,12 @@ open/high/low/close/settle/volume/open_interest。是K线图、均线、历史�
 
 **profit_margin_record（月度利润率）**：`variety_id` 外键，`(variety_id, period)` 唯一
 约束。独立于价格分位数之外的另一条极端状态判断依据（见第5节 `compute_margin_signal`）。
+**2026-08修了一个bug**：`Variety`模型之前一直没给这张表声明`db.relationship(backref="variety")`
+（`contracts`/`cases`/`production_routes`这些表都有对应的relationship，唯独这张没有），
+导致`/admin`的"月度利润率"新建页面完全没有"品种"这个字段可选、列表页的"品种"列也一直是空的
+——数据库层面外键约束还在，问题只出在Flask-Admin的表单/列表是靠扫描relationship生成的，
+光有外键列它认不出来。补上`Variety.profit_margin_records`这条relationship后就恢复正常了，
+不需要改`app/admin.py`里的配置。
 
 ### 3.4 事件与日历模块
 
@@ -305,6 +312,22 @@ variety ──┬── production_route（生产端工艺/产地）
 **`compute_margin_signal(variety)` —— 利润/成本维度**：逻辑和价格维度完全一样，但换成
 月度利润率序列（`ProfitMarginRecord`），`MARGIN_MIN_WINDOW`＝12个月。存在这条通道的原因：
 价格没有历史极端，不代表基本面没有走极端——成本端变化可能让利润率独立地陷入历史极值。
+
+**`get_profit_status_label(variety)` —— "当前行业状态"这行文字怎么来的（2026-08新加）**：
+这个函数跟上面两条不是一回事，不产生极端状态判断，也不参与`compute_composite_signal`
+投票，只是决定页面上"当前行业状态/当前盈利"这行文字显示什么。背景：`Variety.profit_status`
+以前是纯人工在`/admin`填的静态值，没有任何机制会跟着最新数据自动更新，实际用下来已经出现
+过标签和真实数据对不上的情况（纯碱静态填"亏损"，最新月度利润率其实已经转正为+1.99；豆粕
+静态填"盈亏平衡"，最新月度利润率其实是+8.86，明显是盈利）。现在改成：查`ProfitMarginRecord`
+最新一条记录，按`margin_value`的正负号自动判断——大于`PROFIT_BREAKEVEN_BAND`(2)记"盈利"，
+小于负`PROFIT_BREAKEVEN_BAND`记"亏损"，中间记"盈亏平衡"；只有这个品种完全没有导入过月度
+利润率数据时，才退回去显示`Variety.profit_status`这个人工兜底值；两者都没有就如实显示
+"暂无数据"。返回值带`source`字段（`dynamic`/`static_fallback`/`none`），页面据此显示
+"（XX月度利润率X.X自动推断）"这样的小字说明，让人一眼看出这个结论是算出来的还是人工填的
+兜底值，不要混为一谈——这跟本节后面"催生了事件≠叙事被验证"是同一种"给结论的同时说清楚
+这个结论是怎么来的"的做法。新建品种时`profit_status`可以留空，等第一条月度利润率数据导入后
+页面会自动切换成动态结果，不需要再手动维护这个字段（当然如果想在没有月度数据之前先给个
+大致印象，也可以填，不强制）。
 
 **`compute_chip_anomaly_signal(variety)` —— 筹码异常（资金布局型）**：**不看价格所处
 位置**，任何价格水平下都检查：
@@ -558,6 +581,15 @@ Y轴的地方（一般图表设计原则是避免双轴，这里是因为用户�
 `top5_long_ratio`/`top5_short_ratio` 字段，见第5.3节），让筹码这条从"只有仓单能投票"
 变成"仓单+前5席位集中度两条独立投票"。但这仍然是汇总层面的集中度，不是具体到单个席位
 的增减仓明细——如果以后能拿到更细的分席位持仓数据源，还可以再往下细化。
+
+**"当前行业状态"曾经会显示过期数据，2026-08已修复。** `Variety.profit_status` 是纯人工
+填的静态字段，之前页面直接显示它，没有任何机制提醒"这个字段该更新了"——实际发现纯碱标着
+"亏损"但月度利润率早转正、豆粕标着"盈亏平衡"但月度利润率明显是盈利，两个品种的静态标签
+都跟真实数据对不上。现在改成`get_profit_status_label()`优先从`ProfitMarginRecord`最新
+一条数据动态推断（见5.3节），`profit_status`降级为"还没有月度数据时的兜底值"。**遗留的
+小尾巴**：`PROFIT_BREAKEVEN_BAND`(±2)这个"盈亏平衡"判定带宽是拍脑袋定的经验值，不同品种
+`margin_value`的量级不一定可比（模型注释里写的是"任意单位，不做跨品种绝对值比较"），如果
+以后某个品种的利润率数值量级跟现在三个品种差异很大，这个固定带宽可能不适用，需要重新评估。
 
 **主力合约是简化的连续合成序列，不是真实分合约拼接。** 没有真实的合约到期/换月逻辑，
 `Contract` 表里每个品种永远只有一条 `is_main=True` 的记录。这是经过讨论后**刻意决定
