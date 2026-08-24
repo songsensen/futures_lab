@@ -12,7 +12,7 @@
         </h5>
         <p class="text-muted mb-1">{{ c.variety.exchange }} · {{ c.variety.sector }}</p>
         <p class="mb-1"><span class="badge bg-info text-dark">{{ c.variety.pricing_type }}</span>
-           <span class="badge bg-secondary">当前{{ c.variety.profit_status }}</span></p>
+           <span class="badge bg-secondary">当前{{ c.profit_status.label }}</span></p>
         {% if c.price_snap %}
         <p class="mb-1">最新收盘：<strong>{{ c.price_snap.latest_close }}</strong>
           （{{ c.price_snap.latest_date }}，历史{{ c.price_snap.percentile }}%分位）</p>
