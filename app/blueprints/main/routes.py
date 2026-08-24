@@ -17,6 +17,7 @@ from app.analysis import (
     compute_composite_signal,
     get_case_risk_reward,
     summarize_case_risk_reward,
+    get_macro_snapshot,
 )
 
 main_bp = Blueprint("main", __name__)
@@ -66,6 +67,10 @@ def variety_detail(code):
     composite_signal = compute_composite_signal(setup_signal, margin_signal, chip_signal, matched_cases)
     risk_reward_summary = summarize_case_risk_reward(matched_cases)
 
+    # 宏观环境参考：跟品种本身无关的全局快照(PMI/CPI同比/USDCNY等)，纯展示用，
+    # 不参与上面 composite_signal 的投票——原因见 get_macro_snapshot 的函数注释。
+    macro_snapshot = get_macro_snapshot()
+
     setup_regions = get_setup_episode_regions(variety, dimension="价格")
 
     kline_data = []
@@ -101,6 +106,7 @@ def variety_detail(code):
         filtered_case_count=filtered_case_count,
         composite_signal=composite_signal,
         risk_reward_summary=risk_reward_summary,
+        macro_snapshot=macro_snapshot,
         setup_signal=setup_signal,
         setup_precedents=setup_precedents,
         margin_signal=margin_signal,
