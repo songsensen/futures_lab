@@ -51,6 +51,38 @@
 </div>
 {% endif %}
 
+{% if macro_snapshot %}
+<!--
+  宏观环境参考：跟具体品种无关的全局背景信息(PMI/CPI同比/USDCNY等)，2026-08新加。
+  故意放在"决策参考"卡片外面、单独一块、灰色底、明确标"仅供参考、不参与上面的信号对齐"——
+  避免视觉上让人误以为这也是投票的一路信号。不投票的原因见 app/analysis.py 里
+  get_macro_snapshot 的函数注释：传导关系复杂 + 数据样本薄 + 没有"指标该关注哪些品种"的
+  映射表，贸然接入投票容易引入没被验证过的伪信号，所以现阶段只如实展示最新读数。
+-->
+<div class="card mb-3" style="background:#f8f9fa;">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
+    <span>宏观环境参考</span>
+    <span class="badge bg-secondary">仅供参考 · 不参与上方信号对齐投票</span>
+  </div>
+  <div class="card-body py-2">
+    <div class="row g-2">
+      {% for m in macro_snapshot %}
+      <div class="col-md-4 col-lg-3">
+        <div class="small border rounded p-2 h-100">
+          <strong>{{ m.indicator }}</strong>
+          <div>{{ m.value }}{% if m.trend %} <span class="text-muted">（{{ m.trend }}）</span>{% endif %}</div>
+          <div class="text-muted">{{ m.report_date.isoformat() }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="small text-muted mt-2 mb-0 fst-italic">
+      样本量薄、且与具体品种的传导关系未经梳理，这里只如实展示最新读数，要不要纳入自己的判断，由你自己决定。
+    </p>
+  </div>
+</div>
+{% endif %}
+
 <div class="row">
   <!-- 第一层：静态认知框架 -->
   <div class="col-md-4">
