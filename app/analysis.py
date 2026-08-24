@@ -31,6 +31,7 @@ from app.models import (
     Contract,
     SetupEpisode,
     ProfitMarginRecord,
+    MacroData,
 )
 
 RECENT_EVENT_WINDOW_DAYS = 60  # "最近发生过同标签事件"的观察窗口
@@ -696,9 +697,10 @@ def compute_chip_anomaly_signal(variety: Variety):
 
     reasons = []
     # oi_direction 只标"活跃度异常"，不进复合信号的多空投票——持仓量变化本身不带方向
-    # （新多和新空都会让它变大），强行给它安个多空标签是过度解读；wh_direction 才有
-    # 明确的经济学方向（仓单是可交割的现货库存，变多=供应压力变松→偏空，变少=现货
-    # 变紧→偏多），所以只有它会被 compute_composite_signal 采纳为一票。
+    # （新多和新空都会让它变大），强行给它安个多空标签是过度解读；wh_direction 和下面新加的
+    # top5_direction 才有明确的经济学方向，所以只有这两个会被 compute_composite_signal
+    # 采纳为投票（wh_direction：仓单是可交割的现货库存，变多=供应压力变松→偏空，变少=现货
+    # 变紧→偏多；top5_direction：见下面的详细注释）。
     oi_direction = None
     wh_direction = None
 
@@ -721,11 +723,64 @@ def compute_chip_anomaly_signal(variety: Variety):
         if ratio > 100:
             reasons.append(f"虚实盘比达到{round(ratio, 1)}:1，超过100:1警戒阈值")
 
+    # --- 前5席位多空集中度差值：2026-08新加的第三条筹码维度 -----------------------------
+    # PositionRank 表里本来就有 top5_long_ratio / top5_short_ratio（持仓龙虎榜前5大席位的
+    # 多头/空头占比）这两个字段，录数据的时候一直有填，但在这条新逻辑加进来之前，从来没有
+    # 任何分析函数读取过它们——等于一直有数据白白放着没用。
+    #
+    # 之所以专门把它做成第三条独立维度、而不是并进 oi_direction：总持仓量变化率不带方向
+    # （前面注释解释过），但"前5大席位里，多头占比比空头占比高多少"是有方向的——持仓量最大
+    # 的那批资金一般被认为资金/信息优势更强，他们的多空集中度整体往哪边倾斜，比总持仓量的
+    # 涨跌更接近"主力在做什么"，所以这条允许直接投票，跟 wh_direction 同等对待。
+    #
+    # 判断分两层，跟 oi/仓单那两条的方法保持一致（复用同一套 _expanding_percentile_series /
+    # _rate_of_change_series 工具函数，不是另起一套逻辑）：
+    #   1) 先看"差值本身现在处于历史什么水平"——这是最直接的判断，衡量"现在前排资金的
+    #      多空集中度，跟历史比是不是罕见地偏向一边"。
+    #   2) 如果差值本身还没到历史极值，但可能正在快速往一个方向变化（比如从中性快速转向
+    #      净多，但还没来得及积累到历史极端水平），再看它最近 CHIP_LOOKBACK_DAYS 天的
+    #      变化率是否处于历史极端——这条能捕捉"还没到极值、但短期内变化很快"的情况，
+    #      跟 oi_direction/wh_direction 用的是同一套变化率+分位数方法。
+    #   两层只要有一层触发就采纳，层1判断不了才看层2，不会同时看两层导致方向自相矛盾。
+    top5_direction = None
+    top5_level_percentile = None
+    top5_roc_percentile = None
+    top5_series = [
+        (p.top5_long_ratio - p.top5_short_ratio)
+        for p in pos_rows
+        if p.top5_long_ratio is not None and p.top5_short_ratio is not None
+    ]
+    top5_level_pct_series = _expanding_percentile_series(top5_series, min_window=CHIP_LOOKBACK_DAYS * 2)
+    if top5_level_pct_series and top5_level_pct_series[-1] is not None and (
+        top5_level_pct_series[-1] >= 95 or top5_level_pct_series[-1] <= 5
+    ):
+        top5_level_percentile = top5_level_pct_series[-1]
+        top5_direction = "集中度历史性偏多" if top5_level_percentile >= 95 else "集中度历史性偏空"
+        reasons.append(
+            f"前5席位多空集中度差值（多头占比-空头占比）处于历史{top5_level_percentile}%分位，"
+            f"{'多头' if top5_level_percentile >= 95 else '空头'}集中度历史罕见地高"
+        )
+    else:
+        top5_roc_series = _rate_of_change_series(top5_series, CHIP_LOOKBACK_DAYS)
+        top5_roc_pct_series = _expanding_percentile_series(top5_roc_series, min_window=CHIP_LOOKBACK_DAYS * 2)
+        if top5_roc_pct_series and top5_roc_pct_series[-1] is not None and (
+            top5_roc_pct_series[-1] >= 95 or top5_roc_pct_series[-1] <= 5
+        ):
+            top5_roc_percentile = top5_roc_pct_series[-1]
+            top5_direction = "集中度快速转多" if top5_roc_percentile >= 95 else "集中度快速转空"
+            reasons.append(
+                f"前5席位多空集中度差值最近{CHIP_LOOKBACK_DAYS}个交易日变化率处于历史"
+                f"{top5_roc_percentile}%分位，短期内快速{'转向多头' if top5_roc_percentile >= 95 else '转向空头'}"
+            )
+
     return {
         "triggered": bool(reasons),
         "reasons": reasons,
         "oi_direction": oi_direction,
         "wh_direction": wh_direction,
+        "top5_direction": top5_direction,
+        "top5_level_percentile": top5_level_percentile,
+        "top5_roc_percentile": top5_roc_percentile,
         "note": "这条通道不看价格所处位置，任何时候检测到都会提示——资金提前布局跟价格高低没有必然关系。",
     }
 
@@ -764,9 +819,11 @@ def compute_composite_signal(setup_signal, margin_signal, chip_signal, matched_c
     - 价格分位：处于历史低位 -> 均值回归意义上偏多；处于历史高位 -> 偏空。
     - 利润状态：利润极低 -> 现金成本对价格下方有支撑，偏多；利润极高 -> 超额利润
       吸引扩产/挤压后续涨幅，偏空。
-    - 筹码/仓单：只用仓单方向投票(骤增=可交割货源变松=偏空，骤减=变紧=偏多)——
-      持仓量变化率异常不投票，因为持仓量变大本身不带方向(新多新空都会让它变大)，
-      强行安一个多空标签是过度解读，这里保持克制。
+    - 筹码/仓单：仓单方向投票(骤增=可交割货源变松=偏空，骤减=变紧=偏多)，以及
+      2026-08新加的前5席位多空集中度方向投票(集中度偏多/快速转多=偏多，反之=偏空)——
+      这两条分开独立投票，谁触发算谁的，互不覆盖。持仓量变化率异常本身不投票，因为
+      持仓量变大不带方向(新多新空都会让它变大)，强行安一个多空标签是过度解读，这里
+      保持克制。
     - 历史相似案例：按每条案例的匹配分加权，看这些案例最终价格走势(price_end 相对
       price_start)平均偏向哪个方向；不因为案例标了"逻辑未兑现"就跳过或反向处理，
       因为 price_start/price_end 本身已经如实记录了实际发生的涨跌，是不是"未兑现"
@@ -807,14 +864,44 @@ def compute_composite_signal(setup_signal, margin_signal, chip_signal, matched_c
 
     if chip_signal and chip_signal.get("triggered"):
         wh_direction = chip_signal.get("wh_direction")
+        top5_direction = chip_signal.get("top5_direction")
+        chip_voted = False
+
         if wh_direction == "骤增":
             votes.append(-1)
+            chip_voted = True
             components.append({"channel": "筹码/仓单", "read": "仓单短期骤增，可交割货源变宽松", "lean": "偏空（供应压力逻辑）"})
         elif wh_direction == "骤减":
             votes.append(1)
+            chip_voted = True
             components.append({"channel": "筹码/仓单", "read": "仓单短期骤减，可交割货源收紧", "lean": "偏多（现货偏紧逻辑）"})
-        else:
-            # 只有持仓量变化率异常触发、仓单没有触发：不投票，但如实提示，别把这条信息藏起来
+
+        # 前5席位多空集中度：独立于仓单的第二条筹码投票渠道，用的是 PositionRank 表里
+        # top5_long_ratio/top5_short_ratio 算出来的差值（见 compute_chip_anomaly_signal
+        # 里的详细注释）。跟仓单方向分开判断、分开投票，两条谁触发算谁的，不会互相覆盖，
+        # 也可能同时触发（这种时候两票方向一致会加强一致性，方向不一致就如实算成分歧）。
+        if top5_direction in ("集中度历史性偏多", "集中度快速转多"):
+            votes.append(1)
+            chip_voted = True
+            pct = chip_signal.get("top5_level_percentile") or chip_signal.get("top5_roc_percentile")
+            components.append({
+                "channel": "筹码/前5席位集中度",
+                "read": f"{top5_direction}（历史{pct}%分位）",
+                "lean": "偏多（前排资金——一般被认为资金/信息优势更强——净多集中度偏高，跟随大资金方向逻辑）",
+            })
+        elif top5_direction in ("集中度历史性偏空", "集中度快速转空"):
+            votes.append(-1)
+            chip_voted = True
+            pct = chip_signal.get("top5_level_percentile") or chip_signal.get("top5_roc_percentile")
+            components.append({
+                "channel": "筹码/前5席位集中度",
+                "read": f"{top5_direction}（历史{pct}%分位）",
+                "lean": "偏空（前排资金净空集中度偏高，跟随大资金方向逻辑）",
+            })
+
+        if not chip_voted:
+            # 只有持仓量变化率异常触发，仓单和前5席位集中度都没触发方向：不投票，但如实
+            # 提示，别把这条信息藏起来
             components.append({
                 "channel": "筹码/持仓量",
                 "read": "、".join(chip_signal["reasons"]),
@@ -855,20 +942,27 @@ def compute_composite_signal(setup_signal, margin_signal, chip_signal, matched_c
     bullish = sum(1 for v in votes if v > 0)
     bearish = sum(1 for v in votes if v < 0)
 
+    # votes 里最多可能有5票：价格分位、利润状态、筹码/仓单、筹码/前5席位集中度（2026-08新加）、
+    # 历史相似案例。2026-08之前筹码这条只有仓单一票能投，那时候最多4票，"高置信度"的门槛定
+    # 在">=3票同向"；现在筹码拆成仓单+前5席位集中度两条独立投票渠道，最多可以到5票，所以把
+    # "高置信度"的门槛同步提到">=4票同向"，避免门槛没跟着调整、让"高"变得比原来更容易触发。
+    # 注意仓单和前5席位集中度都属于"筹码"这个大类，两者背后的资金/库存动态可能本来就相关，
+    # 不是完全独立的信息来源，这也是为什么门槛要提高而不是维持不变——见 docs/system_design.md
+    # 第5节的详细说明。
     if bullish == 0 and bearish == 0:
         verdict, confidence = "无明显方向", "低"
-        summary = "价格、利润、筹码/仓单、历史案例这几路信号目前都不处于极端或方向不一致，没有形成合力，建议观望，不强行找方向。"
+        summary = "价格、利润、筹码/仓单、筹码/前5席位集中度、历史案例这几路信号目前都不处于极端或方向不一致，没有形成合力，建议观望，不强行找方向。"
     elif bullish > 0 and bearish > 0:
         verdict, confidence = "多空信号不一致", "低"
         summary = f"{bullish}路信号偏多、{bearish}路信号偏空，出现分歧——这种时候历史经验是不宜重仓单边，观望或降低仓位等信号收敛更稳妥。"
     elif bullish > bearish:
         verdict = "多头因素占优"
-        confidence = "高" if bullish >= 3 else "中"
-        summary = f"{bullish}路独立信号同时指向偏多方向，暂无信号指向偏空，一致性{'较高' if bullish >= 3 else '中等'}。"
+        confidence = "高" if bullish >= 4 else "中"
+        summary = f"{bullish}路独立信号同时指向偏多方向，暂无信号指向偏空，一致性{'较高' if bullish >= 4 else '中等'}。"
     else:
         verdict = "空头因素占优"
-        confidence = "高" if bearish >= 3 else "中"
-        summary = f"{bearish}路独立信号同时指向偏空方向，暂无信号指向偏多，一致性{'较高' if bearish >= 3 else '中等'}。"
+        confidence = "高" if bearish >= 4 else "中"
+        summary = f"{bearish}路独立信号同时指向偏空方向，暂无信号指向偏多，一致性{'较高' if bearish >= 4 else '中等'}。"
 
     return {
         "verdict": verdict,
@@ -900,3 +994,55 @@ def summarize_case_risk_reward(matched_cases):
         "drawdown_range": (min(drawdowns), max(drawdowns)),
         "duration_range": (min(durations), max(durations)),
     }
+
+
+def get_macro_snapshot():
+    """
+    宏观环境参考快照：2026-08新加，把 MacroData 表里每个指标最新一期的读数摆出来，
+    仅作为背景信息展示在页面上，**不参与** compute_composite_signal 的多空投票，
+    也不影响 verdict/confidence 的计算结果——这一点很重要，别以后不小心把它接进投票逻辑
+    却忘了这条注释。
+
+    为什么故意不让它投票（而不是干脆不做），原因有三条，详细讨论见 docs/system_design.md
+    第5节，这里简单记一下：
+    1) 宏观指标对单个商品期货品种的传导本身复杂、滞后、非线性，不像价格分位/利润分位那样
+       可以直接套用"历史分位数"这套简单规则给出可靠方向，勉强套用容易得出似是而非的结论；
+    2) MacroData 目前样本量偏薄（每个指标基本是每月一个点，一共111条，覆盖不了几年），
+       拿这么少的点去算"历史分位数"统计意义有限，跟案例库样本小是同一类问题；
+    3) 现在也没有一张"哪个宏观指标该被哪个品种关注"的映射表——比如 PMI 对纯碱(建材类)
+       和对豆粕(农产品类)这两个品种的含义、传导路径完全不同，不能一概而论地都拿来投票，
+       贸然接入容易引入看着有道理、实际没被验证过的伪信号。
+    所以现阶段的定位是：如实把最新数据摆出来，要不要纳入自己的判断，由你自己决定；
+    等以后想清楚了映射关系、也攒够了年份跨度的数据，再考虑要不要把它升级成能投票的信号，
+    到时候可以参照 compute_setup_signal 那一套"分位数+持续时长"的写法。
+    """
+    indicator_names = sorted(
+        row[0] for row in MacroData.query.with_entities(MacroData.indicator).distinct().all()
+    )
+    snapshot = []
+    for name in indicator_names:
+        rows = (
+            MacroData.query.filter_by(indicator=name)
+            .order_by(MacroData.report_date.desc())
+            .limit(2)
+            .all()
+        )
+        if not rows:
+            continue
+        latest = rows[0]
+        prev = rows[1] if len(rows) > 1 else None
+        trend = None
+        if prev is not None and prev.value is not None and latest.value is not None:
+            if latest.value > prev.value:
+                trend = "较上期上升"
+            elif latest.value < prev.value:
+                trend = "较上期下降"
+            else:
+                trend = "与上期持平"
+        snapshot.append({
+            "indicator": name,
+            "value": latest.value,
+            "report_date": latest.report_date,
+            "trend": trend,
+        })
+    return snapshot
