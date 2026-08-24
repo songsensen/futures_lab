@@ -96,7 +96,14 @@
           <tr><td class="text-muted">定价权归属</td><td><span class="badge bg-info text-dark">{{ variety.pricing_type }}</span></td></tr>
           <tr><td class="text-muted">核心锚定标的</td><td>{{ variety.anchor_benchmark }}</td></tr>
           <tr><td class="text-muted">内外盘联动系数</td><td>{{ variety.linkage_coefficient }}</td></tr>
-          <tr><td class="text-muted">当前行业状态</td><td>{{ variety.profit_status }}</td></tr>
+          <tr><td class="text-muted">当前行业状态</td><td>
+            {{ profit_status_label.label }}
+            {% if profit_status_label.source == 'dynamic' %}
+            <span class="text-muted small">（{{ profit_status_label.period }}月度利润率{{ profit_status_label.value }}自动推断）</span>
+            {% elif profit_status_label.source == 'static_fallback' %}
+            <span class="text-muted small">（人工填写的兜底值，还没有月度利润率数据）</span>
+            {% endif %}
+          </td></tr>
           <tr><td class="text-muted">历史区间</td><td>{{ variety.historical_low }} ~ {{ variety.historical_high }}</td></tr>
           {% if variety.storability %}
           <tr><td class="text-muted">库存耐储存性</td><td>
