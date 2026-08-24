@@ -18,6 +18,7 @@ from app.analysis import (
     get_case_risk_reward,
     summarize_case_risk_reward,
     get_macro_snapshot,
+    get_profit_status_label,
 )
 
 main_bp = Blueprint("main", __name__)
@@ -29,7 +30,9 @@ def variety_list():
     cards = []
     for v in varieties:
         price_snap = get_price_snapshot(v)
-        cards.append({"variety": v, "price_snap": price_snap})
+        # 品种列表卡片上的"当前XX"徽章，同样改用动态算出来的盈利状态，不直接读静态字段
+        # （见 get_profit_status_label 的注释）。
+        cards.append({"variety": v, "price_snap": price_snap, "profit_status": get_profit_status_label(v)})
     return render_template("main/variety_list.html", cards=cards)
 
 
@@ -71,6 +74,10 @@ def variety_detail(code):
     # 不参与上面 composite_signal 的投票——原因见 get_macro_snapshot 的函数注释。
     macro_snapshot = get_macro_snapshot()
 
+    # "当前行业状态"这行文字，改用动态算出来的结果，不再直接读 variety.profit_status
+    # 这个静态字段——见 get_profit_status_label 的注释。
+    profit_status_label = get_profit_status_label(variety)
+
     setup_regions = get_setup_episode_regions(variety, dimension="价格")
 
     kline_data = []
@@ -107,6 +114,7 @@ def variety_detail(code):
         composite_signal=composite_signal,
         risk_reward_summary=risk_reward_summary,
         macro_snapshot=macro_snapshot,
+        profit_status_label=profit_status_label,
         setup_signal=setup_signal,
         setup_precedents=setup_precedents,
         margin_signal=margin_signal,
