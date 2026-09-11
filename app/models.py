@@ -70,14 +70,29 @@ class Variety(db.Model):
     factors = db.relationship("VarietyFactor", backref="variety", cascade="all, delete-orphan")
     contracts = db.relationship("Contract", backref="variety", cascade="all, delete-orphan")
     cases = db.relationship("Case", backref="variety", cascade="all, delete-orphan")
+    # production_routes = db.relationship(
+    #     "ProductionRoute", backref="variety", cascade="all, delete-orphan",
+    #     order_by="ProductionRoute.market_share_pct.desc()",
+    # )
+
     production_routes = db.relationship(
-        "ProductionRoute", backref="variety", cascade="all, delete-orphan",
+        "ProductionRoute", back_populates="variety", cascade="all, delete-orphan",
         order_by="ProductionRoute.market_share_pct.desc()",
     )
+
+
+    # supply_chain_nodes = db.relationship(
+    #     "SupplyChainNode", backref="variety", cascade="all, delete-orphan",
+    #     order_by="SupplyChainNode.order_index",
+    # )
+
+
     supply_chain_nodes = db.relationship(
-        "SupplyChainNode", backref="variety", cascade="all, delete-orphan",
+        "SupplyChainNode", back_populates="variety", cascade="all, delete-orphan",
         order_by="SupplyChainNode.order_index",
     )
+
+
     # 2026-08修复：这条关系之前一直没声明，导致 ProfitMarginRecord 那张表虽然有
     # variety_id 外键列，但没有真正的 ORM 关系——Flask-Admin 的表单/列表都是靠扫描
     # relationship 来生成外键下拉框和显示列的，光有外键列它认不出来，后台"月度利润率"
@@ -116,6 +131,7 @@ class ProductionRoute(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     variety_id = db.Column(db.Integer, db.ForeignKey("variety.id"), nullable=False)
+    variety = db.relationship("Variety", back_populates="production_routes") 
     route_name = db.Column(db.String(64), nullable=False)  # 如"联碱法""巴西大豆压榨"
     route_type = db.Column(db.String(16))  # 工艺 / 原料产地
     market_share_pct = db.Column(db.Float)  # 当前占该品种总供应的比例(%)
@@ -140,6 +156,7 @@ class SupplyChainNode(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     variety_id = db.Column(db.Integer, db.ForeignKey("variety.id"), nullable=False)
+    variety = db.relationship("Variety", back_populates="supply_chain_nodes")
     direction = db.Column(db.String(8), nullable=False)  # upstream / downstream
     order_index = db.Column(db.Integer, default=1)
     name = db.Column(db.String(64), nullable=False)

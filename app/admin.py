@@ -18,7 +18,8 @@
 """
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
-from flask_admin.theme import Bootstrap4Theme
+# from flask_admin.theme import Bootstrap4Theme
+
 
 from app.extensions import db
 from app.models import (
@@ -66,7 +67,7 @@ class ProductionRouteAdmin(BaseAdmin):
     column_list = ["variety", "route_name", "route_type", "market_share_pct", "cash_cost",
                    "produces_only_this", "byproduct_name"]
     column_labels = {
-        "variety": "所属品种", "route_name": "工艺/产地名称", "route_type": "类型（工艺/原料产地）",
+        "variety": "品种", "route_name": "工艺/产地名称", "route_type": "类型（工艺/原料产地）",
         "market_share_pct": "当前市场占比(%)", "cash_cost": "现金成本",
         "produces_only_this": "是否只产该品种（无则说明有副产品）",
         "byproduct_name": "副产品名称", "byproduct_profit_note": "副产品盈利状况及对主产品成本支撑的说明",
@@ -77,10 +78,12 @@ class ProductionRouteAdmin(BaseAdmin):
 class SupplyChainNodeAdmin(BaseAdmin):
     column_list = ["variety", "direction", "order_index", "name", "cost_share_pct"]
     column_labels = {
-        "variety": "所属品种", "direction": "方向（upstream上游 / downstream下游）",
+        "variety": "品种", "direction": "方向（upstream上游 / downstream下游）",
         "order_index": "展示顺序（越小越靠近该品种）", "name": "节点名称",
         "cost_share_pct": "成本/需求占比(%)", "note": "备注",
     }
+
+
 
 
 class FactorTagAdmin(BaseAdmin):
@@ -172,7 +175,8 @@ def register_admin(app):
     # endpoint 显式加 admin_ 前缀 —— flask-admin 默认按模型类名小写生成 blueprint 端点名，
     # 会和已有的 case/main 等业务蓝图撞名（比如 Case 模型默认端点是 "case"，
     # 正好和 app/blueprints/case 这个蓝图同名），必须手动指定成唯一值。
-    admin = Admin(app, name="期货实验室 · 数据管理后台", theme=Bootstrap4Theme(), url="/admin")
+    # admin = Admin(app, name="期货实验室 · 数据管理后台", theme=Bootstrap4Theme(), url="/admin")
+    admin = Admin(app, name="期货实验室 · 数据管理后台", template_mode='bootstrap4', url="/admin")
     admin.add_view(VarietyAdmin(Variety, db.session, name="品种", endpoint="admin_variety", category="品种基础信息"))
     admin.add_view(ProductionRouteAdmin(ProductionRoute, db.session, name="生产端工艺/产地", endpoint="admin_production_route", category="品种基础信息"))
     admin.add_view(SupplyChainNodeAdmin(SupplyChainNode, db.session, name="上下游产业链", endpoint="admin_supply_chain_node", category="品种基础信息"))
